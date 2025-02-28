@@ -1,0 +1,37 @@
+on:
+  push:
+    branches:
+      - build
+
+jobs:
+  build:
+    runs-on: windows-latest
+    name: Update NuGet package
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          submodules: recursive
+          token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+
+      - name: Setup .NET 9
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: '9.0.x'
+          source-url: https://nuget.pkg.github.com/snagr/index.json
+        env:
+          NUGET_AUTH_TOKEN: ${{secrets.GITHUB_TOKEN}}     
+          
+      - name: Restoring workload
+        run: |  
+          cd Mopups/Mopups.Maui/
+          dotnet workload restore
+          cd -
+
+      - name: Build solution and generate NuGet package
+        run: |  
+          dotnet build -c Release Mopups/Mopups.Maui/Mopups.csproj
+          dotnet pack Mopups/Mopups.Maui/Mopups.csproj --no-build --output ./packages
+      - name: Push generated package to GitHub registry
+        run: dotnet nuget push ./packages/*.nupkg --skip-duplicate --no-symbols
