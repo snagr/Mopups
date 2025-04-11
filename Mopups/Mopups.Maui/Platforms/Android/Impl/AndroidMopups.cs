@@ -12,8 +12,8 @@ namespace Mopups.Droid.Implementation;
 
 public class AndroidMopups : IPopupPlatform
 {
-    private static FrameLayout? DecoreView => GetTopFragmentDecorView();
-
+    private WeakReference<FrameLayout>? _popupDecorView;
+    
     public static bool SendBackPressed(Action? backPressedHandler = null)
     {
         var popupNavigationInstance = MopupService.Instance;
@@ -47,7 +47,10 @@ public class AndroidMopups : IPopupPlatform
         var handler = page.Handler ??= new PopupPageHandler(page.Parent.Handler.MauiContext);
 
         var androidNativeView = handler.PlatformView as Android.Views.View;
-        DecoreView?.AddView(androidNativeView);
+        var decorView = GetTopFragmentDecorView();
+        
+        _popupDecorView = new (decorView);
+        decorView.AddView(androidNativeView);
 
         return PostAsync(androidNativeView);
     }
@@ -56,15 +59,17 @@ public class AndroidMopups : IPopupPlatform
     {
         var renderer = IPopupPlatform.GetOrCreateHandler<PopupPageHandler>(page);
 
-        if(renderer != null)
+        if(renderer != null
+            && _popupDecorView != null
+            && _popupDecorView.TryGetTarget(out var decorView))
         {
             HandleAccessibility(false, page.DisableAndroidAccessibilityHandling, page);
 
-            DecoreView?.RemoveView(renderer.PlatformView as Android.Views.View);
+            decorView?.RemoveView(renderer.PlatformView as Android.Views.View);
             renderer.DisconnectHandler(); //?? no clue if works
             page.Parent = null;
 
-            return PostAsync(DecoreView);
+            return PostAsync(decorView);
         }
 
         return Task.CompletedTask;
