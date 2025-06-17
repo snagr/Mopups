@@ -1,8 +1,9 @@
-﻿using Android.Views;
+using Android.Views;
 using Android.Widget;
 using AndroidX.Activity;
 using AndroidX.Fragment.App;
 using AsyncAwaitBestPractices;
+using Mopups.Extensions;
 using Microsoft.Maui.Platform;
 using Mopups.Interfaces;
 using Mopups.Pages;
@@ -12,8 +13,9 @@ namespace Mopups.Droid.Implementation;
 
 public class AndroidMopups : IPopupPlatform
 {
-    private WeakReference<FrameLayout>? _popupDecorView;
-    
+    private static IList<FrameLayout?> DecoreViews => GetAllFragmentDecorViews();
+    private static FrameLayout? DecoreView => GetTopFragmentDecorView();
+
     public static bool SendBackPressed(Action? backPressedHandler = null)
     {
         var popupNavigationInstance = MopupService.Instance;
@@ -41,16 +43,13 @@ public class AndroidMopups : IPopupPlatform
     {
         HandleAccessibility(true, page.DisableAndroidAccessibilityHandling, page);
 
-        page.Parent = MauiApplication.Current.Application.Windows[0].Content as Element;
-        page.Parent ??= MauiApplication.Current.Application.Windows[0].Content as Element;
+        var mainPage = (Element)MauiApplication.Current.Application.Windows[0].Content;
+        mainPage.AddLogicalChild(page);
 
-        var handler = page.Handler ??= new PopupPageHandler(page.Parent.Handler.MauiContext);
+        var handler = page.Handler ??= new PopupPageHandler(page.Parent.FindMauiContext());
 
         var androidNativeView = handler.PlatformView as Android.Views.View;
-        var decorView = GetTopFragmentDecorView();
-        
-        _popupDecorView = new (decorView);
-        decorView.AddView(androidNativeView);
+        DecoreView?.AddView(androidNativeView);
 
         return PostAsync(androidNativeView);
     }
@@ -59,15 +58,16 @@ public class AndroidMopups : IPopupPlatform
     {
         var renderer = IPopupPlatform.GetOrCreateHandler<PopupPageHandler>(page);
 
-        if(renderer != null
-            && _popupDecorView != null
-            && _popupDecorView.TryGetTarget(out var decorView))
+        if (renderer != null)
         {
             HandleAccessibility(false, page.DisableAndroidAccessibilityHandling, page);
 
-            decorView?.RemoveView(renderer.PlatformView as Android.Views.View);
+            foreach (var decoreView in DecoreViews)
+            {
+                decoreView?.RemoveView(renderer.PlatformView as Android.Views.View);
+            }
             renderer.DisconnectHandler(); //?? no clue if works
-            page.Parent = null;
+            page.Parent?.RemoveLogicalChild(page);
 
             return PostAsync(decorView);
         }
@@ -200,5 +200,35 @@ public class AndroidMopups : IPopupPlatform
         }
 
         return topFragment.Activity?.Window?.DecorView as FrameLayout;
+    }
+
+    static IList<FrameLayout?> GetAllFragmentDecorViews()
+    {
+        IList<FrameLayout?> decoreViews = new List<FrameLayout?>();
+        if (Platform.CurrentActivity is not ComponentActivity componentActivity)
+        {
+            return decoreViews;
+        }
+
+        var fragments = componentActivity.GetFragmentManager()?.Fragments;
+
+        if (fragments is null || !fragments.Any())
+        {
+            decoreViews.Add(Platform.CurrentActivity?.Window?.DecorView as FrameLayout);
+            return decoreViews;
+        }
+
+        foreach (var fragment in fragments)
+        {
+            if (fragment is DialogFragment dialogFragment)
+            {
+                decoreViews.Add(dialogFragment.Dialog?.Window?.DecorView as FrameLayout);
+                continue;
+            }
+
+            decoreViews.Add(fragment.Activity?.Window?.DecorView as FrameLayout);
+        }
+
+        return decoreViews;
     }
 }
