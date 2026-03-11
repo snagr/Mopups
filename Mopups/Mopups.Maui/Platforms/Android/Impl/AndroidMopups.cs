@@ -42,8 +42,10 @@ public class AndroidMopups : IPopupPlatform
     public Task AddAsync(PopupPage page)
     {
         HandleAccessibility(true, page.DisableAndroidAccessibilityHandling, page);
-        var mainPage = (Element)MauiApplication.Current.Application.Windows[0].Content;
-        page.Parent = mainPage;
+
+        page.Parent = IPlatformApplication.Current.Application.Windows[0].Content as Element;
+        //var mainPage = (Element)MauiApplication.Current.Application.Windows[0].Content;
+        //mainPage.AddLogicalChild(page);
 
         var handler = page.Handler ??= new PopupPageHandler(page.Parent.FindMauiContext());
 
